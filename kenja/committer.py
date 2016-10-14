@@ -2,10 +2,18 @@ from __future__ import absolute_import
 import os
 import re
 import pkg_resources
+import zlib
 from copy import deepcopy
-from tempfile import NamedTemporaryFile
+from tempfile import (
+    NamedTemporaryFile,
+    mkdtemp
+    )
 from string import Template
 from git.objects import Blob
+from gitdb.util import (
+    bin_to_hex,
+    hex_to_bin
+    )
 from kenja.language import is_target_blob
 from kenja.git.tree_contents import SortedTreeContents
 from kenja.git.util import (
@@ -17,7 +25,9 @@ from kenja.git.util import (
     write_blob_from_path,
     large_names_as_string
     )
+from logging import getLogger
 
+logger = getLogger(__name__)
 
 class SyntaxTreesCommitter:
     def __init__(self, org_repo, new_repo, syntax_trees_dir):
@@ -27,6 +37,9 @@ class SyntaxTreesCommitter:
         self.old2new = {}
         self.sorted_tree_contents = {}
         self.blob2tree = {}
+	self.last_tree_contents = {'hexsha': ''}
+	self.trees_dir = mkdtemp()
+	logger.info('Trees dir ' + self.trees_dir)
 
     def is_completed_parse(self, blob):
         path = os.path.join(self.syntax_trees_dir, blob.hexsha)
@@ -80,7 +93,13 @@ class SyntaxTreesCommitter:
 
         new_commit = self.commit(commit, tree_contents)
         self.old2new[commit.hexsha] = new_commit.hexsha
-        self.sorted_tree_contents[new_commit.hexsha] = tree_contents
+        # self.sorted_tree_contents[new_commit.hexsha] = tree_contents
+        self.last_tree_contents['hexsha'] = new_commit.hexsha
+	self.last_tree_contents['tree'] = tree_contents
+	items = ["{}|{}|{}".format(mode, bin_to_hex(binsha), name) for mode, binsha, name in tree_contents]
+	tree_file = open(os.path.join(self.trees_dir, new_commit.hexsha), 'w')
+	tree_file.write(zlib.compress('\n'.join(items)))
+	tree_file.close()
 
     def create_tree_contents_from_commit(self, commit):
         tree_contents = SortedTreeContents()
@@ -126,9 +145,15 @@ class SyntaxTreesCommitter:
 
     def create_tree_contents(self, parent, commit):
         converted_parent_hexsha = self.old2new[parent.hexsha]
+	if converted_parent_hexsha == self.last_tree_contents['hexsha']:
+	    # parent_tree = self.sorted_tree_contents[converted_parent_hexsha]
+	    parent_tree = self.last_tree_contents['tree']
+	else:
+	    parent_tree = self.reconstitute_tree_contents(self.new_repo.commit(converted_parent_hexsha))
+	    
         # TODO This deepcopy have a potential of performance bug.
         # I think there is more clever algorithm for this situation.
-        tree_contents = deepcopy(self.sorted_tree_contents[converted_parent_hexsha])
+        tree_contents = deepcopy(parent_tree)
 
         for diff in parent.diff(commit):
             is_a_target = self.is_convert_target(diff.a_blob)
@@ -147,7 +172,10 @@ class SyntaxTreesCommitter:
                 binsha = self.add_changed_blob(diff.b_blob)
                 if is_a_target:
                     # Blob was changed
-                    tree_contents.replace(tree_mode, binsha, name)
+		    if tree_contents.index(name):
+                        tree_contents.replace(tree_mode, binsha, name)
+		    else:
+			logger.info('[Warning] Missing ' + name + ' from tree')
                 else:
                     # Blob was created
                     tree_contents.insert(tree_mode, binsha, name)
@@ -168,3 +196,22 @@ class SyntaxTreesCommitter:
             hexsha = tag_ref.commit.hexsha
             if hexsha in self.old2new:
                 self.new_repo.create_tag(tag_ref.name, ref=self.old2new[hexsha])
+
+    def load_commit(self, commit, new_commit):
+        self.old2new[commit.hexsha] = new_commit.hexsha
+        tree_contents = SortedTreeContents()
+        for entry in new_commit.tree.traverse():
+            if isinstance(entry, Blob):
+                tree_contents.insert(entry.mode, entry.binsha, entry.path)
+        self.sorted_tree_contents[new_commit.hexsha] = tree_contents
+
+    def reconstitute_tree_contents(self, commit):
+	logger.info('Reconstituting ' + commit.hexsha)
+        tree_contents = SortedTreeContents()
+        with open(os.path.join(self.trees_dir, commit.hexsha), 'r') as tree:
+	    lines = zlib.decompress(tree.read()).split('\n')
+	    for line in lines:
+		if len(line.strip()) > 0:
+                    arr = line.strip().split('|')
+                    tree_contents.insert(arr[0], hex_to_bin(arr[1]), arr[2])
+	return tree_contents

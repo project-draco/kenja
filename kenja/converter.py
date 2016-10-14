@@ -16,18 +16,29 @@ logger = getLogger(__name__)
 
 class HistorageConverter:
     def __init__(self, org_git_repo_dir, historage_dir, syntax_trees_dir=None):
+	logger.info('starting...')
         if org_git_repo_dir:
             self.org_repo = Repo(org_git_repo_dir)
 
-        self.check_and_make_working_dir(historage_dir)
+        self.check_and_make_working_dir(historage_dir, False)
         self.historage_dir = historage_dir
 
         self.use_tempdir = syntax_trees_dir is None
+	self.skip_parsing = False
         if self.use_tempdir:
-            self.syntax_trees_dir = mkdtemp()
-            logger.info(self.syntax_trees_dir)
+	    tmpdir = mkdtemp()
+            self.syntax_trees_dir = os.path.join(tmpdir, 'blobs')
+	    os.mkdir(os.syntax_trees_dir)
+            logger.info(tmpdir)
         else:
-            self.check_and_make_working_dir(syntax_trees_dir)
+            self.check_and_make_working_dir(syntax_trees_dir, False)
+	    working_dir = os.path.join(syntax_trees_dir, 'blobs')
+            if os.listdir(syntax_trees_dir):
+		self.skip_parsing = True
+	        syntax_trees_dir = working_dir
+	    else:
+	        syntax_trees_dir = working_dir
+		os.mkdir(syntax_trees_dir)
             self.syntax_trees_dir = syntax_trees_dir
 
         self.num_commits = 0
@@ -36,9 +47,9 @@ class HistorageConverter:
 
 	self.head_name = self.org_repo.active_branch.name
 
-    def check_and_make_working_dir(self, path):
+    def check_and_make_working_dir(self, path, check_is_empty=True):
         if os.path.isdir(path):
-            if os.listdir(path):
+            if check_is_empty and os.listdir(path):
                 raise Exception('{0} is not an empty directory'.format(path))
         else:
             try:
@@ -88,13 +99,21 @@ class HistorageConverter:
             writer.set(user_key, 'email', 'default@example.com')
 
     def convert(self):
-        self.parse_all_target_files()
+	if not self.skip_parsing:
+	    self.parse_all_target_files()
+	else:
+            logger.info('skipping parser...')
         self.construct_historage()
 
     def construct_historage(self):
         logger.info('convert a git repository to a  historage...')
 
         historage_repo = self.prepare_historage_repo()
+	resume = False
+	if len(os.listdir(self.historage_dir)) > 1:
+	    kwargs = ['show', historage_repo.head.commit.hexsha]
+	    resume_from = historage_repo.git.notes(kwargs)
+	    resume = True
         committer = SyntaxTreesCommitter(Repo(self.org_repo.git_dir), historage_repo, self.syntax_trees_dir)
         num_commits = self.num_commits if self.num_commits != 0 else '???'
         for head in self.org_repo.heads:
@@ -102,7 +121,13 @@ class HistorageConverter:
                 head_hexsha = head.commit.hexsha
         for num, commit in izip(count(), get_reversed_topological_ordered_commits(self.org_repo, self.org_repo.refs)):
             logger.info('[%d/%s] convert %s to: %s' % (num, num_commits, commit.hexsha, historage_repo.git_dir))
-            committer.apply_change(commit, head_hexsha == commit.hexsha)
+	    if resume:
+		if commit.hexsha == resume_from:
+		    committer.load_commit(commit, historage_repo.head.commit)
+		    resume = False
+		    exit()
+	    else:
+                committer.apply_change(commit, head_hexsha == commit.hexsha)
         committer.create_heads()
         committer.create_tags()
         if not self.is_bare_repo:
