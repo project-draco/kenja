@@ -97,7 +97,11 @@ class SyntaxTreesCommitter:
         self.last_tree_contents['hexsha'] = new_commit.hexsha
 	self.last_tree_contents['tree'] = tree_contents
 	items = ["{}|{}|{}".format(mode, bin_to_hex(binsha), name) for mode, binsha, name in tree_contents]
-	tree_file = open(os.path.join(self.trees_dir, new_commit.hexsha), 'w')
+	if commit.hexsha in self.non_contiguous_parents:
+	    tree_file = open(os.path.join(self.trees_dir, new_commit.hexsha), 'w')
+	    tree_file.write(zlib.compress('\n'.join(items)))
+	    tree_file.close()
+	tree_file = open(os.path.join(self.trees_dir, "latest"), 'w')
 	tree_file.write(zlib.compress('\n'.join(items)))
 	tree_file.close()
 
@@ -203,7 +207,9 @@ class SyntaxTreesCommitter:
         for entry in new_commit.tree.traverse():
             if isinstance(entry, Blob):
                 tree_contents.insert(entry.mode, entry.binsha, entry.path)
-        self.sorted_tree_contents[new_commit.hexsha] = tree_contents
+        self.last_tree_contents['hexsha'] = new_commit.hexsha
+	self.last_tree_contents['tree'] = tree_contents
+        # self.sorted_tree_contents[new_commit.hexsha] = tree_contents
 
     def reconstitute_tree_contents(self, commit):
 	logger.info('Reconstituting ' + commit.hexsha)
@@ -215,3 +221,6 @@ class SyntaxTreesCommitter:
                     arr = line.strip().split('|')
                     tree_contents.insert(arr[0], hex_to_bin(arr[1]), arr[2])
 	return tree_contents
+
+    def set_non_contiguous_parents(self, non_contiguous_parents):
+	self.non_contiguous_parents = non_contiguous_parents
