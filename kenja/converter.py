@@ -29,7 +29,7 @@ class HistorageConverter:
         if self.use_tempdir:
 	    tmpdir = mkdtemp()
             self.syntax_trees_dir = os.path.join(tmpdir, 'blobs')
-	    os.mkdir(os.syntax_trees_dir)
+	    os.mkdir(self.syntax_trees_dir)
             logger.info(tmpdir)
         else:
             self.check_and_make_working_dir(syntax_trees_dir, False)
