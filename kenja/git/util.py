@@ -65,11 +65,7 @@ def write_syntax_tree_from_file(odb, src_path):
         elif header == '[TE]':
             # Contents of tree end by [TE].
             # [TE] tree_name
-            tree_name = info
-	    if len(tree_name) > 240:
-		if not tree_name in large_names:
-		    large_names[tree_name] = len(large_names)+1
-	        tree_name = format_large_name(tree_name)
+            tree_name = convert_to_large_name(info)
 	    t = sorted(deduplicated(trees.pop()), cmp=git_cmp)
             (mode, binsha) = mktree_from_iter(odb, t)
             trees[-1].append((mode, binsha, tree_name))
@@ -89,6 +85,19 @@ def deduplicated(l):
 
 def format_large_name(key):
     return '--large-name{0}--'.format(large_names[key])
+
+def convert_from_large_name(name):
+    if name in large_names:
+	return format_large_name(large_names[name])
+    else:
+	return name
+
+def convert_to_large_name(name):
+    if len(name) > 240:
+	if not name in large_names:
+	    large_names[name] = len(large_names)+1
+	return format_large_name(name)
+    return name
 
 def write_tree(odb, src_path):
     assert os.path.isdir(src_path) and not os.path.islink(src_path)

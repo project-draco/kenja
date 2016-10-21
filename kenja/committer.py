@@ -23,7 +23,9 @@ from kenja.git.util import (
     tree_mode,
     create_note,
     write_blob_from_path,
-    large_names_as_string
+    large_names_as_string,
+    convert_from_large_name,
+    convert_to_large_name
     )
 from logging import getLogger
 
@@ -110,7 +112,7 @@ class SyntaxTreesCommitter:
 
         for entry in commit.tree.traverse():
             if isinstance(entry, Blob) and self.is_convert_target(entry):
-                path = self.get_normalized_path(entry.path)
+                path = convert_to_large_name(self.get_normalized_path(entry.path))
                 binsha = self.add_changed_blob(entry)
                 tree_contents.insert(tree_mode, binsha, path)
 
@@ -164,22 +166,22 @@ class SyntaxTreesCommitter:
             is_b_target = self.is_convert_target(diff.b_blob)
             if is_a_target and (not is_b_target or diff.renamed):
                 # Blob was removed
-                name = self.get_normalized_path(diff.a_blob.path)
+                name = convert_from_large_name(self.get_normalized_path(diff.a_blob.path))
                 tree_contents.remove(name)
                 if is_b_target and diff.renamed:
                     # Blob was created
-                    name = self.get_normalized_path(diff.b_blob.path)
+                    name = convert_to_large_name(self.get_normalized_path(diff.b_blob.path))
                     binsha = self.add_changed_blob(diff.b_blob)
                     tree_contents.insert(tree_mode, binsha, name)
             elif is_b_target:
-                name = self.get_normalized_path(diff.b_blob.path)
+                name = convert_from_large_name(self.get_normalized_path(diff.b_blob.path))
                 binsha = self.add_changed_blob(diff.b_blob)
                 if is_a_target:
                     # Blob was changed
-		    if tree_contents.index(name):
+		    #if tree_contents.index(convert_from_large_name(name)):
                         tree_contents.replace(tree_mode, binsha, name)
-		    else:
-			logger.info('[Warning] Missing ' + name + ' from tree')
+		    #else:
+			#logger.info('[Warning] Missing %s from tree' % (name))
                 else:
                     # Blob was created
                     tree_contents.insert(tree_mode, binsha, name)

@@ -89,6 +89,7 @@ class HistorageConverter:
                             blob_parser.parse_blob(entry)
                             parsed_blob.add(entry.hexsha)
 	    last_commit_hexsha = commit.hexsha
+	logger.info('Found %d non-contiguous parents' % (len(self.non_contiguous_parents)))
 	if not self.skip_parsing:
             logger.info('waiting parser processes')
             blob_parser.join()
