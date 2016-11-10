@@ -121,6 +121,7 @@ class HistorageConverter:
 
     def construct_historage(self):
         logger.info('convert a git repository to a  historage...')
+        logger.info('%d head(s)', len(self.org_repo.heads))
 
         historage_repo = self.prepare_historage_repo()
 	resume = False
@@ -134,15 +135,29 @@ class HistorageConverter:
         for head in self.org_repo.heads:
 	    if head.name == self.head_name:
                 head_hexsha = head.commit.hexsha
+	threshold = 1000
         for num, commit in izip(count(), get_reversed_topological_ordered_commits(self.org_repo, self.org_repo.refs)):
-            logger.info('[%d/%s] convert %s to: %s' % (num, num_commits, commit.hexsha, historage_repo.git_dir))
+            logger.info('[%d/%s] convert %s to: %s' % (num+1, num_commits, commit.hexsha, historage_repo.git_dir))
 	    if resume:
-		if commit.hexsha == resume_from:
-		    committer.load_commit(commit, historage_repo.head.commit)
-		    resume = False
-		    exit()
+		logger.info('Resume not supported')
+		exit()
+		#if commit.hexsha == resume_from:
+		#    committer.load_commit(commit, historage_repo.head.commit)
+		#    resume = False
+		#    exit()
 	    else:
-                committer.apply_change(commit, head_hexsha == commit.hexsha)
+                new_hexsha = committer.apply_change(commit, head_hexsha == commit.hexsha)
+		if (num+1) % threshold == 0:
+		    logger.info('Invoking gc...')
+		    historage_repo.git.gc()
+		    historage_repo = Repo(self.historage_dir)
+		    committer.set_new_repo(historage_repo)
+		    if (num+1) == 10000:
+			threshold = 5000
+		    elif (num+1) == 50000:
+			threshold = 10000
+		    elif (num+1) == 100000:
+			threshold = 20000
         committer.create_heads()
         committer.create_tags()
         if not self.is_bare_repo:

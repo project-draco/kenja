@@ -106,6 +106,7 @@ class SyntaxTreesCommitter:
 	tree_file = open(os.path.join(self.trees_dir, "latest"), 'w')
 	tree_file.write(zlib.compress('\n'.join(items)))
 	tree_file.close()
+	return new_commit.hexsha
 
     def create_tree_contents_from_commit(self, commit):
         tree_contents = SortedTreeContents()
@@ -226,3 +227,6 @@ class SyntaxTreesCommitter:
 
     def set_non_contiguous_parents(self, non_contiguous_parents):
 	self.non_contiguous_parents = non_contiguous_parents
+
+    def set_new_repo(self, repo):
+	self.new_repo = repo
