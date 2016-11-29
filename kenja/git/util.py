@@ -88,7 +88,7 @@ def format_large_name(key):
 
 def convert_from_large_name(name):
     if name in large_names:
-	return format_large_name(large_names[name])
+	return format_large_name(name)
     else:
 	return name
 
