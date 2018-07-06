@@ -145,7 +145,7 @@ setup(name='kenja',
       ],
       dependency_links=[
           'https://github.com/tos-kamiya/pyrem_torq/tarball/master#egg=pyrem_torq',
-          'https://github.com/sdlab-naist/kenja-python-parser/tarball/master#egg=kenja-python-parser'
+          'https://github.com/project-draco/kenja-python-parser/tarball/master#egg=kenja-python-parser'
       ],
       license="MIT license",
       classifiers=[
